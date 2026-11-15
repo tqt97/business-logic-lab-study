@@ -8,6 +8,7 @@ return [
         'business-calendar-slots' => ['01' => ['source' => 'app/Features/BusinessCalendarSlots/Http/Requests/AvailabilityRequest.php', 'test' => 'tests/Feature/BusinessCalendarSlots/BusinessCalendarSlotsTest.php'], '02' => ['source' => 'app/Features/BusinessCalendarSlots/Services/SlotGenerator.php + app/Features/BusinessCalendarSlots/Actions/GenerateRoomSlots.php', 'test' => 'tests/Feature/BusinessCalendarSlots/BusinessCalendarSlotsTest.php'], '03' => ['source' => 'app/Features/BusinessCalendarSlots/Services/NextAvailableDateFinder.php + app/Features/BusinessCalendarSlots/Enums/CalendarOverrideKind.php', 'test' => 'tests/Unit/BusinessCalendarSlots/SlotGeneratorTest.php'], '04' => ['source' => 'database/migrations/2026_11_14_100000_create_business_calendar_rooms_table.php + database/migrations/2026_11_14_100001_create_business_calendar_weekly_hours_table.php', 'test' => 'tests/Feature/BusinessCalendarSlots/BusinessCalendarSlotsTest.php']],
         'booking-overlap' => ['01' => ['source' => 'app/Features/BookingOverlap/Http/Requests/StoreRoomBookingRequest.php', 'test' => 'tests/Feature/BookingOverlap/BookingOverlapTest.php'], '02' => ['source' => 'app/Features/BookingOverlap/Actions/CreateRoomBooking.php', 'test' => 'tests/Feature/BookingOverlap/BookingOverlapTest.php'], '03' => ['source' => 'app/Features/BookingOverlap/Policies/RoomBookingPolicy.php + app/Features/BookingOverlap/ValueObjects/BookingInterval.php', 'test' => 'tests/Feature/BookingOverlap/BookingOverlapTest.php'], '04' => ['source' => 'database/migrations/2026_11_14_110000_create_business_calendar_bookings_table.php + database/migrations/2026_11_14_110001_add_business_calendar_booking_checks.php', 'test' => 'tests/Feature/BookingOverlap/BookingOverlapTest.php']],
         'contextual-validation' => ['01' => ['source' => 'app/Features/ContextualValidation/Http/Requests/StoreEventRegistrationRequest.php', 'test' => 'tests/Feature/ContextualValidation/ContextualValidationTest.php'], '02' => ['source' => 'app/Features/ContextualValidation/Actions/RegisterForEvent.php', 'test' => 'tests/Feature/ContextualValidation/ContextualValidationTest.php'], '03' => ['source' => 'app/Features/ContextualValidation/Domain/RegistrationPolicy.php + app/Features/ContextualValidation/Enums/TicketType.php', 'test' => 'tests/Feature/ContextualValidation/ContextualValidationTest.php'], '04' => ['source' => 'database/migrations/2026_11_14_120000_create_contextual_validation_events_table.php + database/migrations/2026_11_14_120001_create_contextual_validation_registrations_table.php', 'test' => 'tests/Feature/ContextualValidation/ContextualValidationTest.php']],
+        'idempotency' => ['01' => ['source' => 'app/Features/Idempotency/Http/Requests/StoreIdempotentOrderRequest.php', 'test' => 'tests/Feature/Idempotency/IdempotencyTest.php'], '02' => ['source' => 'app/Features/Idempotency/Actions/CreateIdempotentOrder.php', 'test' => 'tests/Feature/Idempotency/IdempotencyTest.php'], '03' => ['source' => 'app/Features/Idempotency/Domain/IdempotentOrderResult.php + app/Features/Idempotency/Enums/OrderProduct.php', 'test' => 'tests/Feature/Idempotency/IdempotencyTest.php'], '04' => ['source' => 'database/migrations/2026_11_14_140000_create_idempotency_order_tables.php', 'test' => 'tests/Feature/Idempotency/IdempotencyTest.php']],
     ],
     'domain_limitations' => [
         'state-transition' => ['Distributed event ordering and cross-service audit replication are outside this lab.', 'The optimistic version protocol is demonstrated locally, not under a production traffic profile.'],
@@ -17,6 +18,7 @@ return [
         'booking-overlap' => ['Distributed locking across multiple database writers is not proven by this local lab.', 'Payment, notification and cancellation side effects need an outbox or after-commit protocol.'],
         'contextual-validation' => ['Rate limiting, bot defense and invite-secret rotation are not implemented.', 'Capacity race behavior needs a production-engine integration test.'],
         'cancellation-rescheduling' => ['Refund provider settlement, queue retry and reconciliation are not implemented.', 'SQLite and MySQL concurrency behavior has not been verified for this lab.'],
+        'idempotency' => ['Order creation is synchronous and has no payment/provider side effect or scheduled expiry cleanup.', 'The atomic duplicate-key protocol and MySQL concurrency behavior have not been verified for this lab.'],
     ],
     'evidence_status' => ['verified' => 'Verified', 'conceptual' => 'Conceptual', 'not_covered' => 'Not covered'],
     'shared' => [
@@ -156,6 +158,47 @@ return [
             ['title' => 'Structured logs', 'description' => 'Registration, source/target course, actor, action and outcome code.'],
             ['title' => 'Metrics', 'description' => 'Cancellation success, cutoff rejection, capacity conflict and transaction duration.'],
             ['title' => 'Runbook', 'description' => 'Compare registration, history and refund intent before replaying any external refund.'],
+        ],
+    ],
+    'idempotency' => [
+        'data_label' => 'Data model / database contract', 'data_title' => 'The key claim and order result share one atomic boundary', 'data_description' => 'The actor-operation-key unique index arbitrates claims. The canonical request hash detects changed intent, and the saved response is replayed for the retention window.',
+        'data_rows' => [
+            ['element' => 'idempotency_records scope', 'contract' => 'Unique user_id + operation + SHA-256 key hash.', 'reason' => 'Prevents cross-user leakage and duplicate claims for one operation.'],
+            ['element' => 'request_hash + response_body', 'contract' => 'Canonical business fields are hashed; a versioned JSON response snapshot is stored.', 'reason' => 'Detects key reuse with changed input and returns the same committed result.'],
+            ['element' => 'idempotency_orders', 'contract' => 'Product price comes from the server catalog; order and completed claim commit together.', 'reason' => 'The client cannot set the order total and no order can outlive a failed claim transaction.'],
+        ],
+        'decision_label' => 'Decision table', 'decision_title' => 'Resolve retries before creating another order', 'decision_description' => 'The same key is scoped to the authenticated user and operation version. Expired rows are reused atomically for a new request.',
+        'decision_rows' => [
+            ['when' => 'No unexpired record for this scoped key', 'result' => 'Create one order', 'evidence' => 'Order and completed response record commit in one transaction.'],
+            ['when' => 'Same unexpired key + same request hash', 'result' => 'Replay saved response', 'evidence' => 'Same HTTP status and JSON body; replay header is true.'],
+            ['when' => 'Same unexpired key + different request hash', 'result' => '409 conflict', 'evidence' => 'No second order is created.'],
+            ['when' => 'Expired record', 'result' => 'Reuse key for a new logical request', 'evidence' => 'The record is reset and the new order is committed atomically; old order remains.'],
+        ],
+        'test_label' => 'Test matrix / evidence', 'test_title' => 'Implementation is present; behavior is not yet verified', 'test_description' => 'No tests or concurrency harness have been run for BL-08. The rows below are required evidence, not completed claims.',
+        'test_principles' => ['Assert order count and response body on retry.', 'Cover actor and operation scope separately.', 'Use independent database connections for the competing-key race.'],
+        'test_rows' => [
+            ['scenario' => 'Sequential retry with same key and payload', 'level' => 'Feature', 'status' => 'not_covered', 'assertion' => 'One order exists and response JSON/status match.'],
+            ['scenario' => 'Same key with changed quantity', 'level' => 'Feature', 'status' => 'not_covered', 'assertion' => '409 conflict with no second order.'],
+            ['scenario' => 'Concurrent same-key requests', 'level' => 'Integration', 'status' => 'not_covered', 'assertion' => 'One order commits and the other receives the saved response.'],
+            ['scenario' => 'Before commit failure and expired key reuse', 'level' => 'Integration', 'status' => 'not_covered', 'assertion' => 'Rollback permits retry; expiry permits a new order without deleting the old one.'],
+        ],
+        'performance_label' => 'Performance / scalability', 'performance_title' => 'Keep the key lookup indexed and the transaction local', 'performance_description' => 'The write path uses one unique indexed lookup and a short transaction. Response snapshots increase storage; expiry supports retention operations but cleanup is not scheduled here.',
+        'performance_points' => ['Measure duplicate-key wait and transaction duration.', 'Inspect the user/operation/key unique index with EXPLAIN.', 'Track idempotency record volume and expiry backlog.', 'Avoid logging raw keys, canonical payloads or response bodies.'],
+        'pitfall_label' => 'Pitfalls / anti-patterns', 'pitfall_title' => 'A key alone does not define the request', 'pitfalls' => [
+            ['title' => 'Hashing unnormalized input', 'description' => 'Equivalent values can produce different fingerprints or meaningful fields can be omitted.'],
+            ['title' => 'Creating the order before claiming', 'description' => 'A retry race can commit multiple business results.'],
+            ['title' => 'Persisting processing in a separate commit', 'description' => 'A crash can strand a visible claim without a recovery protocol.'],
+        ],
+        'maturity_label' => 'Maturity levels', 'maturity_title' => 'Separate atomic local correctness from distributed guarantees', 'maturity' => [
+            ['level' => 'Level 1 / Correctness', 'title' => 'Atomic synchronous operation', 'description' => 'Scoped unique key, canonical fingerprint and order response commit together.'],
+            ['level' => 'Level 2 / Operations', 'title' => 'Retention and recovery', 'description' => 'Add bounded cleanup, stuck-claim monitoring, key metrics and runbooks.'],
+            ['level' => 'Level 3 / Distributed effects', 'title' => 'Provider-safe workflow', 'description' => 'Use an outbox and propagate a stable provider idempotency key for external effects.'],
+        ],
+        'observability_label' => 'Observability / operations', 'observability_title' => 'Measure outcomes without exposing client keys', 'observability_description' => 'Log only scoped record and order identifiers plus outcome; never log the raw Idempotency-Key or full request body.',
+        'observability' => [
+            ['title' => 'Structured logs', 'description' => 'idempotency_record_id, order_id, operation, outcome and replay flag.'],
+            ['title' => 'Metrics', 'description' => 'order_created, response_replayed, payload_conflict, in_progress and duplicate_key_wait.'],
+            ['title' => 'Runbook', 'description' => 'Check record status, expiry and linked order before asking a client to retry with a new key.'],
         ],
     ],
 ];

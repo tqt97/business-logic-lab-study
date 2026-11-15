@@ -38,4 +38,5 @@ return [
         'question' => 'When does valid input still fail the current event policy?',
     ],
     'cancellation_rescheduling' => ['label' => 'Cancellation and rescheduling', 'description' => 'Apply cutoff, capacity, history and compensation rules to course changes.', 'group' => 'Workflow and compensation', 'question' => 'How can a course registration change without releasing a seat twice?'],
+    'idempotency' => ['label' => 'Idempotency and safe retries', 'description' => 'Replay one logical order result safely when a client retries after a timeout.', 'group' => 'Reliability and retries', 'question' => 'How can a retried order request avoid creating a second order?'],
 ];

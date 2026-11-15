@@ -105,4 +105,42 @@ return [
         'threat_label' => 'Phân tích lỗi / tấn công', 'threat_title' => 'Coi form cũ và identifier bị sửa là không đáng tin', 'threats' => ['Replay hủy sau khi state đã đổi', 'Gửi registration id của attendee khác', 'Chuyển vào course đầy hoặc đã đóng', 'Admin override không có reason', 'Gọi provider trước khi database commit'],
         'review_label' => 'Danh sách kiểm tra', 'review_title' => 'Trước khi gọi logic hủy đáng tin', 'review' => ['Cutoff và override rõ ràng', 'Action kiểm tra ownership', 'Lock dùng thứ tự ổn định', 'State và history commit cùng nhau', 'Refund intent unique và có mức trần', 'Provider retry cần worker idempotent'],
     ],
+    'idempotency' => [
+        'path_title' => 'Lộ trình đọc đề xuất', 'path_description' => 'Theo một request tạo đơn từ key của client tới kết quả đã commit và có thể replay.',
+        'objectives_title' => 'Mục tiêu học tập', 'objectives' => [
+            ['label' => '01 / scope', 'title' => 'Chọn phạm vi idempotency', 'description' => 'Gắn key với actor đã xác thực và một operation có version.'],
+            ['label' => '02 / fingerprint', 'title' => 'Canonicalize input nghiệp vụ', 'description' => 'Chỉ so sánh các field đã chuẩn hóa có thể làm thay đổi kết quả đơn hàng.'],
+            ['label' => '03 / atomicity', 'title' => 'Commit một đơn hàng logic', 'description' => 'Ghi order và response có thể replay cùng key trong một database transaction.'],
+        ],
+        'theory_label' => 'Lý thuyết / mô hình tư duy', 'theory_title' => 'Retry là một lần giao lại cùng ý định', 'theory_description' => 'Timeout không cho client biết server đã commit hay chưa. Idempotency record giúp server nhận diện cùng ý định và trả lại kết quả đã lưu thay vì lặp mutation.',
+        'concepts' => [
+            ['title' => 'Scope của key', 'description' => 'User đã xác thực và operation version tạo namespace riêng cho client key. User hoặc operation khác có scope khác.'],
+            ['title' => 'Request fingerprint', 'description' => 'Chuẩn hóa product code và quantity trước khi hash. Cùng key nhưng fingerprint khác phải trả conflict rõ ràng.'],
+            ['title' => 'Thời hạn lưu', 'description' => 'Key có hiệu lực 24 giờ. Sau khi hết hạn, record có thể được dùng lại cho request logic mới; order cũ vẫn được giữ.'],
+        ],
+        'invariant_label' => 'Invariant / quy tắc quyết định', 'invariant_title' => 'Một key trong scope actor-operation chỉ tạo tối đa một order trong thời hạn lưu', 'invariant_code' => "unique(user_id, operation, key_hash)\nAND active_key + same_request_hash => replay_saved_response\nAND active_key + different_request_hash => 409_conflict\nAND order + completed_idempotency_record_commit_together", 'invariant_description' => 'Unique index của database phân xử claim đồng thời. Transaction commit order và response có version cùng nhau; lab này không chạy external side effect.',
+        'flow_label' => 'Luồng code / vòng đời request', 'flow_title' => 'Claim, tạo order và lưu response nguyên tử', 'flow' => [
+            ['title' => 'Validate API boundary', 'description' => 'Đọc Idempotency-Key từ header, validate product trong allowlist và quantity có giới hạn.'],
+            ['title' => 'Canonicalize và xác định scope', 'description' => 'Chuẩn hóa product code và quantity, hash payload canonical và hash key; không lưu raw key.'],
+            ['title' => 'Giải quyết claim', 'description' => 'Khóa record theo actor-operation-key; replay, conflict hoặc chỉ thay record khi đã hết hạn.'],
+            ['title' => 'Commit một kết quả', 'description' => 'Insert order và lưu JSON response chính xác trong cùng transaction.'],
+            ['title' => 'Trả outcome', 'description' => 'Cả response đầu và replay dùng HTTP 201; header Idempotency-Replayed đánh dấu replay.'],
+        ],
+        'implementation_label' => 'Triển khai / Laravel + database', 'implementation_title' => 'Giữ claim và kết quả nghiệp vụ cùng boundary', 'implementation_description' => 'FormRequest validate header và payload; action chịu trách nhiệm fingerprint, lock, transaction và phục hồi duplicate key; controller map domain conflict thành JSON.', 'boundaries' => [
+            ['label' => 'Scope', 'value' => 'User đã xác thực + operation orders.create.v1'],
+            ['label' => 'Fingerprint', 'value' => 'SHA-256 trên product_code canonical và quantity integer'],
+            ['label' => 'Thời hạn lưu', 'value' => '24 giờ; record hết hạn được dùng lại trong transaction'],
+        ],
+        'examples_label' => 'Ví dụ code / bản đồ trách nhiệm', 'examples_title' => 'Request key khác request fingerprint', 'examples' => [
+            ['title' => 'Payload canonical', 'description' => 'Chỉ business field đã được server validate mới quyết định hai request có tương đương không.', 'code' => "canonical = [\n    'product_code' => ProductCode::from(input),\n    'quantity' => (int) input.quantity,\n];\n\$requestHash = sha256(json_encode(canonical));"],
+            ['title' => 'Claim và kết quả nguyên tử', 'description' => 'Order không thể commit nếu thiếu response record để replay.', 'code' => "DB::transaction(function () {\n    claimOrLockScopedKey();\n    createOrderFromServerCatalog();\n    saveVersionedResponse();\n});"],
+        ],
+        'tradeoff_label' => 'Đánh đổi', 'tradeoff_title' => 'Durability và replay chính xác có chi phí', 'tradeoffs' => [
+            ['class' => 'lab-tradeoff-card--safe', 'title' => 'Bảo vệ', 'description' => 'Unique scope-key index và transaction nguyên tử ngăn tạo order trùng cho request đã commit.'],
+            ['class' => 'lab-tradeoff-card--cost', 'title' => 'Chi phí', 'description' => 'Mỗi key cần một row và response snapshot; request cùng key chạy đồng thời phải chờ database phân xử.'],
+            ['class' => 'lab-tradeoff-card--limit', 'title' => 'Giới hạn', 'description' => 'Payment bên ngoài, queue delivery, cleanup tự động và bằng chứng concurrency MySQL nằm ngoài phạm vi.'],
+        ],
+        'threat_label' => 'Threat / phân tích lỗi', 'threat_title' => 'Giả định key và payload có thể bị replay hoặc sửa', 'threats' => ['Dùng lại key với quantity đã đổi', 'Replay key của user khác', 'Gửi key vượt giới hạn kích thước', 'Process dừng trước transaction commit', 'Gửi request đồng thời khi claim đầu chưa commit', 'Ghi raw key hoặc toàn bộ request body vào log'],
+        'review_label' => 'Danh sách kiểm tra', 'review_title' => 'Trước khi gọi retry tạo đơn là an toàn', 'review' => ['Scope gồm actor đã xác thực và operation version', 'Chỉ lưu hash của key và request fingerprint', 'Canonical payload gồm mọi field làm đổi outcome', 'Order và response record commit nguyên tử', 'Rule cho key hết hạn được xác định rõ', 'External effect dùng outbox hoặc provider deduplication'],
+    ],
 ];

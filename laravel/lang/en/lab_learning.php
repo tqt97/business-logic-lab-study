@@ -108,4 +108,42 @@ return [
         'threat_label' => 'Threat / failure analysis', 'threat_title' => 'Assume stale forms and tampered identifiers', 'threats' => ['Replay cancellation after a state change', 'Submit another attendee registration id', 'Move into a full or closed course', 'Use admin override without reason', 'Call a provider before database commit'],
         'review_label' => 'Review checklist', 'review_title' => 'Before calling cancellation reliable', 'review' => ['Cutoff and override are explicit', 'Ownership is checked in the action', 'Locks use stable order', 'State and history commit together', 'Refund intent is unique and bounded', 'Provider retries need an idempotent worker'],
     ],
+    'idempotency' => [
+        'path_title' => 'Suggested reading path', 'path_description' => 'Follow one create-order request from its client key to the committed replay result.',
+        'objectives_title' => 'Learning objectives', 'objectives' => [
+            ['label' => '01 / scope', 'title' => 'Choose the idempotency scope', 'description' => 'Bind a key to the authenticated actor and one versioned operation.'],
+            ['label' => '02 / fingerprint', 'title' => 'Canonicalize business input', 'description' => 'Compare only normalized fields that change the order outcome.'],
+            ['label' => '03 / atomicity', 'title' => 'Commit one logical order', 'description' => 'Store the order and replayable response with the key in one database transaction.'],
+        ],
+        'theory_label' => 'Theory / mental model', 'theory_title' => 'A retry is another delivery of the same intent', 'theory_description' => 'A timeout does not tell a client whether the server committed. The idempotency record lets the server identify the same intent and replay its saved outcome instead of repeating the mutation.',
+        'concepts' => [
+            ['title' => 'Key scope', 'description' => 'The authenticated user and operation version define where a client key is unique. Another user or operation has a separate namespace.'],
+            ['title' => 'Request fingerprint', 'description' => 'Normalize product code and quantity before hashing. The same key with a different fingerprint is an explicit conflict.'],
+            ['title' => 'Retention window', 'description' => 'A key is valid for 24 hours. After expiry the record can be reused for a new logical request; old order rows remain intact.'],
+        ],
+        'invariant_label' => 'Invariant / decision rule', 'invariant_title' => 'One key in one actor-operation scope creates at most one order during retention', 'invariant_code' => "unique(user_id, operation, key_hash)\nAND active_key + same_request_hash => replay_saved_response\nAND active_key + different_request_hash => 409_conflict\nAND order + completed_idempotency_record_commit_together", 'invariant_description' => 'The database unique index arbitrates concurrent claims. The transaction commits the order and versioned response together; no external side effect runs in this lab.',
+        'flow_label' => 'Code flow / request lifecycle', 'flow_title' => 'Claim, create and record the response atomically', 'flow' => [
+            ['title' => 'Validate the API boundary', 'description' => 'Read Idempotency-Key from the header and validate an allowlisted product plus bounded quantity.'],
+            ['title' => 'Canonicalize and scope', 'description' => 'Normalize product code and quantity, hash that canonical payload and hash the key without persisting the raw key.'],
+            ['title' => 'Resolve the claim', 'description' => 'Lock an existing actor-operation-key record; replay, conflict or replace it only after expiry.'],
+            ['title' => 'Commit one result', 'description' => 'Insert the order and save the exact JSON response in the same transaction.'],
+            ['title' => 'Return the outcome', 'description' => 'Use HTTP 201 for both initial response and replay; Idempotency-Replayed distinguishes the replay.'],
+        ],
+        'implementation_label' => 'Implementation / Laravel + database', 'implementation_title' => 'Keep claim and business result in one boundary', 'implementation_description' => 'The FormRequest validates the header and payload; the action owns fingerprinting, locking, transaction and duplicate-key recovery; the controller maps domain conflicts to JSON.', 'boundaries' => [
+            ['label' => 'Scope', 'value' => 'Authenticated user + orders.create.v1 operation'],
+            ['label' => 'Fingerprint', 'value' => 'SHA-256 over canonical product_code and integer quantity'],
+            ['label' => 'Retention', 'value' => '24 hours; expired rows are reused transactionally'],
+        ],
+        'examples_label' => 'Code example / responsibility map', 'examples_title' => 'The request key is not the request fingerprint', 'examples' => [
+            ['title' => 'Canonical payload', 'description' => 'Only server-validated business fields define whether the retry is equivalent.', 'code' => "canonical = [\n    'product_code' => ProductCode::from(input),\n    'quantity' => (int) input.quantity,\n];\n\$requestHash = sha256(json_encode(canonical));"],
+            ['title' => 'Atomic claim and result', 'description' => 'The order cannot commit without its replayable response record.', 'code' => "DB::transaction(function () {\n    claimOrLockScopedKey();\n    createOrderFromServerCatalog();\n    saveVersionedResponse();\n});"],
+        ],
+        'tradeoff_label' => 'Trade-offs', 'tradeoff_title' => 'Durability and exact replay have a cost', 'tradeoffs' => [
+            ['class' => 'lab-tradeoff-card--safe', 'title' => 'Protects', 'description' => 'The unique scope-key index and atomic transaction prevent duplicate orders for a committed request.'],
+            ['class' => 'lab-tradeoff-card--cost', 'title' => 'Costs', 'description' => 'A row and response snapshot are stored per key; same-key concurrent requests wait on database arbitration.'],
+            ['class' => 'lab-tradeoff-card--limit', 'title' => 'Limits', 'description' => 'External payments, queue delivery, automated cleanup and MySQL concurrency evidence are outside this slice.'],
+        ],
+        'threat_label' => 'Threat / failure analysis', 'threat_title' => 'Assume keys and payloads can be replayed or changed', 'threats' => ['Reuse a key with a changed quantity', 'Replay another user’s key', 'Submit a key that exceeds the size limit', 'Crash before transaction commit', 'Send concurrent requests while the first claim is uncommitted', 'Log the raw key or full request body'],
+        'review_label' => 'Review checklist', 'review_title' => 'Before calling order retries safe', 'review' => ['Scope includes authenticated actor and operation version', 'Key and request fingerprint are stored only as hashes', 'Canonical payload covers every outcome-changing field', 'Order and response record commit atomically', 'Expired-key behavior is explicit', 'External effects use an outbox or provider deduplication'],
+    ],
 ];

@@ -8,6 +8,7 @@ return [
         'business-calendar-slots' => ['01' => ['source' => 'app/Features/BusinessCalendarSlots/Http/Requests/AvailabilityRequest.php', 'test' => 'tests/Feature/BusinessCalendarSlots/BusinessCalendarSlotsTest.php'], '02' => ['source' => 'app/Features/BusinessCalendarSlots/Services/SlotGenerator.php + app/Features/BusinessCalendarSlots/Actions/GenerateRoomSlots.php', 'test' => 'tests/Feature/BusinessCalendarSlots/BusinessCalendarSlotsTest.php'], '03' => ['source' => 'app/Features/BusinessCalendarSlots/Services/NextAvailableDateFinder.php + app/Features/BusinessCalendarSlots/Enums/CalendarOverrideKind.php', 'test' => 'tests/Unit/BusinessCalendarSlots/SlotGeneratorTest.php'], '04' => ['source' => 'database/migrations/2026_11_14_100000_create_business_calendar_rooms_table.php + database/migrations/2026_11_14_100001_create_business_calendar_weekly_hours_table.php', 'test' => 'tests/Feature/BusinessCalendarSlots/BusinessCalendarSlotsTest.php']],
         'booking-overlap' => ['01' => ['source' => 'app/Features/BookingOverlap/Http/Requests/StoreRoomBookingRequest.php', 'test' => 'tests/Feature/BookingOverlap/BookingOverlapTest.php'], '02' => ['source' => 'app/Features/BookingOverlap/Actions/CreateRoomBooking.php', 'test' => 'tests/Feature/BookingOverlap/BookingOverlapTest.php'], '03' => ['source' => 'app/Features/BookingOverlap/Policies/RoomBookingPolicy.php + app/Features/BookingOverlap/ValueObjects/BookingInterval.php', 'test' => 'tests/Feature/BookingOverlap/BookingOverlapTest.php'], '04' => ['source' => 'database/migrations/2026_11_14_110000_create_business_calendar_bookings_table.php + database/migrations/2026_11_14_110001_add_business_calendar_booking_checks.php', 'test' => 'tests/Feature/BookingOverlap/BookingOverlapTest.php']],
         'contextual-validation' => ['01' => ['source' => 'app/Features/ContextualValidation/Http/Requests/StoreEventRegistrationRequest.php', 'test' => 'tests/Feature/ContextualValidation/ContextualValidationTest.php'], '02' => ['source' => 'app/Features/ContextualValidation/Actions/RegisterForEvent.php', 'test' => 'tests/Feature/ContextualValidation/ContextualValidationTest.php'], '03' => ['source' => 'app/Features/ContextualValidation/Domain/RegistrationPolicy.php + app/Features/ContextualValidation/Enums/TicketType.php', 'test' => 'tests/Feature/ContextualValidation/ContextualValidationTest.php'], '04' => ['source' => 'database/migrations/2026_11_14_120000_create_contextual_validation_events_table.php + database/migrations/2026_11_14_120001_create_contextual_validation_registrations_table.php', 'test' => 'tests/Feature/ContextualValidation/ContextualValidationTest.php']],
+        'idempotency' => ['01' => ['source' => 'app/Features/Idempotency/Http/Requests/StoreIdempotentOrderRequest.php', 'test' => 'tests/Feature/Idempotency/IdempotencyTest.php'], '02' => ['source' => 'app/Features/Idempotency/Actions/CreateIdempotentOrder.php', 'test' => 'tests/Feature/Idempotency/IdempotencyTest.php'], '03' => ['source' => 'app/Features/Idempotency/Domain/IdempotentOrderResult.php + app/Features/Idempotency/Enums/OrderProduct.php', 'test' => 'tests/Feature/Idempotency/IdempotencyTest.php'], '04' => ['source' => 'database/migrations/2026_11_14_140000_create_idempotency_order_tables.php', 'test' => 'tests/Feature/Idempotency/IdempotencyTest.php']],
     ],
     'domain_limitations' => [
         'state-transition' => ['Distributed event ordering và cross-service audit replication nằm ngoài lab này.', 'Optimistic version protocol mới được demo local, chưa có traffic profile production.'],
@@ -17,6 +18,7 @@ return [
         'booking-overlap' => ['Distributed lock giữa nhiều database writer chưa được chứng minh trong lab local.', 'Payment, notification và cancellation side effect cần outbox hoặc after-commit protocol.'],
         'contextual-validation' => ['Rate limit, bot defense và invite-secret rotation chưa được triển khai.', 'Capacity race cần integration test trên production database engine.'],
         'cancellation-rescheduling' => ['Chưa triển khai quyết toán refund qua provider, retry queue và reconciliation.', 'Chưa kiểm chứng concurrency trên SQLite hoặc MySQL cho lab này.'],
+        'idempotency' => ['Tạo order chạy đồng bộ, chưa có payment/provider side effect hoặc lịch cleanup key hết hạn.', 'Protocol duplicate key nguyên tử và concurrency MySQL của lab chưa được kiểm chứng.'],
     ],
     'evidence_status' => ['verified' => 'Đã verify', 'conceptual' => 'Mô hình cần có', 'not_covered' => 'Chưa cover'],
     'shared' => ['element' => 'Thành phần', 'contract' => 'Contract', 'reason' => 'Ý nghĩa', 'verified_automated' => 'Đã verify bằng automated test', 'conceptual_requirement' => 'Yêu cầu ở mức kiến trúc', 'not_covered' => 'Chưa được cover', 'limitations_label' => 'Known limitations / giới hạn đã biết', 'limitations_title' => 'Lab này chưa chứng minh điều gì', 'limitations_description' => 'Hãy xem đây là boundary rõ ràng của ví dụ. Claim production cần thêm evidence, kiểm soát vận hành và quyết định domain phù hợp.', 'limitations' => ['Demo không thay thế load test trên traffic production.', 'External side effect cần after-commit hoặc outbox strategy.', 'Threshold và guarantee phải được xem lại khi data volume hoặc contention thay đổi.'], 'measure_before_optimize' => 'Đo trước khi tối ưu'],
@@ -114,6 +116,47 @@ return [
             ['title' => 'Structured log', 'description' => 'Registration, course nguồn/đích, actor, action và outcome code.'],
             ['title' => 'Metrics', 'description' => 'Hủy thành công, cutoff rejection, capacity conflict và transaction duration.'],
             ['title' => 'Runbook', 'description' => 'Đối chiếu registration, history và refund intent trước khi chạy lại refund bên ngoài.'],
+        ],
+    ],
+    'idempotency' => [
+        'data_label' => 'Mô hình dữ liệu / database contract', 'data_title' => 'Claim key và kết quả order dùng chung một boundary nguyên tử', 'data_description' => 'Unique index actor-operation-key phân xử claim. Request hash canonical nhận diện ý định đã đổi; response snapshot được replay trong thời hạn lưu.',
+        'data_rows' => [
+            ['element' => 'idempotency_records scope', 'contract' => 'Unique user_id + operation + SHA-256 key hash.', 'reason' => 'Ngăn lộ kết quả giữa user và claim trùng cho một operation.'],
+            ['element' => 'request_hash + response_body', 'contract' => 'Hash các business field canonical; lưu snapshot JSON có version.', 'reason' => 'Nhận diện key dùng lại với input khác và trả cùng kết quả đã commit.'],
+            ['element' => 'idempotency_orders', 'contract' => 'Giá product lấy từ catalog server; order và claim completed commit cùng nhau.', 'reason' => 'Client không tự đặt total và order không thể tồn tại nếu claim transaction rollback.'],
+        ],
+        'decision_label' => 'Bảng quyết định', 'decision_title' => 'Giải quyết retry trước khi tạo order khác', 'decision_description' => 'Cùng key được scope theo user đã xác thực và operation version. Record hết hạn được dùng lại nguyên tử cho request mới.',
+        'decision_rows' => [
+            ['when' => 'Không có record còn hạn cho scoped key', 'result' => 'Tạo một order', 'evidence' => 'Order và response record completed commit cùng transaction.'],
+            ['when' => 'Cùng key còn hạn + cùng request hash', 'result' => 'Replay response đã lưu', 'evidence' => 'Cùng HTTP status và JSON body; replay header là true.'],
+            ['when' => 'Cùng key còn hạn + request hash khác', 'result' => '409 conflict', 'evidence' => 'Không tạo order thứ hai.'],
+            ['when' => 'Record đã hết hạn', 'result' => 'Dùng key cho request logic mới', 'evidence' => 'Reset record và commit order mới nguyên tử; order cũ vẫn còn.'],
+        ],
+        'test_label' => 'Ma trận test / bằng chứng', 'test_title' => 'Đã có implementation; hành vi chưa được kiểm chứng', 'test_description' => 'BL-08 chưa chạy test hay concurrency harness. Các dòng dưới đây là evidence cần thu thập, chưa phải claim đã hoàn tất.',
+        'test_principles' => ['Assert số order và response body sau retry.', 'Kiểm tra riêng actor scope và operation scope.', 'Dùng connection database độc lập để kiểm tra race cùng key.'],
+        'test_rows' => [
+            ['scenario' => 'Retry tuần tự cùng key và payload', 'level' => 'Feature', 'status' => 'not_covered', 'assertion' => 'Chỉ có một order và response JSON/status khớp.'],
+            ['scenario' => 'Cùng key nhưng quantity thay đổi', 'level' => 'Feature', 'status' => 'not_covered', 'assertion' => 'Trả 409 conflict và không tạo order thứ hai.'],
+            ['scenario' => 'Request cùng key đồng thời', 'level' => 'Integration', 'status' => 'not_covered', 'assertion' => 'Một order commit và request còn lại nhận response đã lưu.'],
+            ['scenario' => 'Lỗi trước commit và dùng lại key hết hạn', 'level' => 'Integration', 'status' => 'not_covered', 'assertion' => 'Rollback cho phép retry; key hết hạn tạo order mới và giữ order cũ.'],
+        ],
+        'performance_label' => 'Hiệu năng / khả năng mở rộng', 'performance_title' => 'Giữ lookup có index và transaction chỉ làm việc nội bộ', 'performance_description' => 'Write path dùng một lookup unique có index và transaction ngắn. Response snapshot tốn storage; expires_at hỗ trợ vận hành retention nhưng lab chưa lập lịch cleanup.',
+        'performance_points' => ['Đo duplicate-key wait và transaction duration.', 'Dùng EXPLAIN kiểm tra unique index user/operation/key.', 'Theo dõi số idempotency record và backlog đã hết hạn.', 'Không log raw key, canonical payload hoặc response body.'],
+        'pitfall_label' => 'Lỗi thường gặp / anti-pattern', 'pitfall_title' => 'Chỉ có key chưa định nghĩa được request', 'pitfalls' => [
+            ['title' => 'Hash input chưa chuẩn hóa', 'description' => 'Giá trị tương đương có thể ra fingerprint khác hoặc bị bỏ sót field quan trọng.'],
+            ['title' => 'Tạo order trước khi claim', 'description' => 'Hai retry cạnh tranh có thể cùng commit business result.'],
+            ['title' => 'Commit processing riêng', 'description' => 'Process lỗi có thể để lại claim nhìn thấy được mà không có recovery protocol.'],
+        ],
+        'maturity_label' => 'Mức trưởng thành', 'maturity_title' => 'Tách correctness nội bộ khỏi bảo đảm phân tán', 'maturity' => [
+            ['level' => 'Level 1 / Correctness', 'title' => 'Operation đồng bộ nguyên tử', 'description' => 'Scoped unique key, fingerprint canonical và order response commit cùng nhau.'],
+            ['level' => 'Level 2 / Operations', 'title' => 'Retention và recovery', 'description' => 'Thêm cleanup có giới hạn, theo dõi claim lỗi, metric key và runbook.'],
+            ['level' => 'Level 3 / Distributed effects', 'title' => 'Workflow an toàn với provider', 'description' => 'Dùng outbox và truyền provider idempotency key ổn định cho external effect.'],
+        ],
+        'observability_label' => 'Quan sát / vận hành', 'observability_title' => 'Đo outcome nhưng không lộ key của client', 'observability_description' => 'Chỉ log record/order identifier, operation và outcome; không log raw Idempotency-Key hay toàn bộ request body.',
+        'observability' => [
+            ['title' => 'Structured log', 'description' => 'idempotency_record_id, order_id, operation, outcome và replay flag.'],
+            ['title' => 'Metrics', 'description' => 'order_created, response_replayed, payload_conflict, in_progress và duplicate_key_wait.'],
+            ['title' => 'Runbook', 'description' => 'Kiểm tra status, expiry và order liên kết trước khi yêu cầu client retry bằng key mới.'],
         ],
     ],
 ];

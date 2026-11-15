@@ -38,4 +38,5 @@ return [
         'question' => 'Khi nào input hợp lệ vẫn bị từ chối bởi policy của sự kiện?',
     ],
     'cancellation_rescheduling' => ['label' => 'Hủy và đổi lịch', 'description' => 'Áp dụng cutoff, capacity, history và rule bù trừ khi đổi khóa học.', 'group' => 'Workflow và bù trừ', 'question' => 'Làm sao đổi đăng ký mà không giải phóng seat hai lần?'],
+    'idempotency' => ['label' => 'Idempotency và retry an toàn', 'description' => 'Trả lại cùng kết quả đơn hàng khi client retry sau timeout mà không tạo đơn thứ hai.', 'group' => 'Độ tin cậy và retry', 'question' => 'Làm sao retry request tạo đơn mà không tạo side effect trùng?'],
 ];

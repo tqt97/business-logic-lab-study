@@ -82,5 +82,16 @@ return [
             'toggleable' => true,
             'route_names' => ['labs.cancellation-rescheduling.index'],
         ],
+        'idempotency' => [
+            'key' => 'idempotency',
+            'label_key' => 'labs.idempotency.label',
+            'description_key' => 'labs.idempotency.description',
+            'group_key' => 'labs.idempotency.group',
+            'question_key' => 'labs.idempotency.question',
+            'implemented' => true,
+            'default_enabled' => true,
+            'toggleable' => true,
+            'route_names' => ['labs.idempotency.index'],
+        ],
     ],
 ];

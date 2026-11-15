@@ -57,5 +57,10 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(20)
                 ->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip()));
         });
+
+        RateLimiter::for('idempotency-order-mutations', function (Request $request): Limit {
+            return Limit::perMinute(20)
+                ->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip()));
+        });
     }
 }
