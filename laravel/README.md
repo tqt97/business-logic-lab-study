@@ -15,7 +15,8 @@
 | BL-05 Booking overlap | implemented locally | SQLite + isolated MySQL functional tests; concurrency harness pending |
 | BL-06 Contextual validation | implemented locally | SQLite functional evidence; MySQL/concurrency pending |
 | BL-07 Cancellation & rescheduling | implemented locally; verification pending | Course locks, atomic history, refund intent; chưa chạy test/concurrency evidence |
-| BL-08 trở đi | planned | Xem tài liệu lab tương ứng, chưa có source implementation |
+| BL-08 Idempotency & safe retries | implemented locally; verification pending | Order + replay response atomic; SQLite/MySQL/concurrency verification pending |
+| BL-09 trở đi | planned | Xem tài liệu lab tương ứng, chưa có source implementation |
 
 Chi tiết quyết định và giới hạn nằm ở [technical implementation records](../docs/INDEX.md#technical-implementation-records).
 
